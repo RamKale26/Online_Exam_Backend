@@ -1,0 +1,15 @@
+target/
+*.log
+*.txt
+.git
+.gitignore
+.mvn/wrapper/maven-wrapper.jar
+New folder/
+backend-server.err.log
+backend-server.out.log
+backend_logs.txt
+.settings/
+.metadata/
+.classpath
+.factorypath
+.project
