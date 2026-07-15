@@ -16,7 +16,7 @@ public class EmailService {
     @Autowired
     private JavaMailSender mailSender;
 
-    @Value("${spring.mail.username}")
+    @Value("${spring.mail.from:ramkale3125@gmail.com}")
     private String fromEmail;
 
     @Async
