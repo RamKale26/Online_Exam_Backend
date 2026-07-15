@@ -1,32 +1,38 @@
 package com.example.demo.service;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
-import java.util.*;
+import jakarta.mail.internet.MimeMessage;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 @Service
 public class EmailService {
 
-    @Value("${spring.mail.password:bsh6SxO1KjEUvgGt}")
-    private String brevoApiKey;
+    @Autowired
+    private JavaMailSender mailSender;
 
-    @Value("${spring.mail.from:ramkale3125@gmail.com}")
+    @Value("${spring.mail.username}")
     private String fromEmail;
-
-    private final RestTemplate restTemplate = new RestTemplate();
-    private static final String BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 
     @Async
     public CompletableFuture<Boolean> sendOtp(String to, String otp) {
         try {
             System.out.println("=================================");
-            System.out.println("[BREVO HTTP EMAIL] Sending OTP to: " + to);
-            System.out.println("[BREVO HTTP EMAIL] From: " + fromEmail);
+            System.out.println("[EMAIL] Sending OTP to: " + to);
+            System.out.println("[EMAIL] From: " + fromEmail);
             System.out.println("=================================");
+
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+            helper.setFrom(fromEmail);
+            helper.setTo(to);
+            helper.setSubject("Your OTP - Online Exam System");
 
             String htmlContent = "<html><body style='font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 20px;'>"
                 + "<div style='max-width: 480px; margin: 0 auto; background: #ffffff; border-radius: 10px; padding: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);'>"
@@ -41,11 +47,19 @@ public class EmailService {
                 + "<p style='color: #aaa; font-size: 12px; margin-top: 30px; text-align: center;'>If you did not request this OTP, please ignore this email.</p>"
                 + "</div></body></html>";
 
-            boolean success = sendViaBrevo(to, "Your OTP - Online Exam System", htmlContent);
-            return CompletableFuture.completedFuture(success);
+            helper.setText(htmlContent, true);
+            mailSender.send(message);
+
+            System.out.println("[EMAIL] OTP SENT SUCCESSFULLY to: " + to);
+            return CompletableFuture.completedFuture(true);
 
         } catch (Exception e) {
-            System.err.println("[BREVO HTTP ERROR] Failed to send OTP to: " + to);
+            System.err.println("[EMAIL ERROR] Failed to send OTP to: " + to);
+            System.err.println("[EMAIL ERROR] Type: " + e.getClass().getName());
+            System.err.println("[EMAIL ERROR] Cause: " + e.getMessage());
+            Throwable root = e;
+            while (root.getCause() != null) root = root.getCause();
+            System.err.println("[EMAIL ERROR] Root cause: " + root.getMessage());
             e.printStackTrace();
             return CompletableFuture.completedFuture(false);
         }
@@ -55,8 +69,15 @@ public class EmailService {
     public CompletableFuture<Boolean> sendResultEmail(String toEmail, String studentName, String categoryName, int score, int totalQuestions, List<com.example.demo.model.Answer> answers) {
         try {
             System.out.println("=================================");
-            System.out.println("[BREVO HTTP EMAIL] Sending result to: " + toEmail);
+            System.out.println("[EMAIL] Sending result to: " + toEmail);
             System.out.println("=================================");
+
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+            helper.setFrom(fromEmail);
+            helper.setTo(toEmail);
+            helper.setSubject("Your Exam Performance Report - " + categoryName);
 
             double percentage = totalQuestions > 0 ? ((double) score / totalQuestions) * 100 : 0;
             String status = percentage >= 50 ? "PASSED" : "FAILED";
@@ -102,60 +123,17 @@ public class EmailService {
             htmlContent.append("<p style='margin-top: 20px;'>Best regards,<br/>Online Exam System Team</p>");
             htmlContent.append("</div></body></html>");
 
-            boolean success = sendViaBrevo(toEmail, "Your Exam Performance Report - " + categoryName, htmlContent.toString());
-            return CompletableFuture.completedFuture(success);
+            helper.setText(htmlContent.toString(), true);
+            mailSender.send(message);
+
+            System.out.println("[EMAIL] Result email SENT SUCCESSFULLY to: " + toEmail);
+            return CompletableFuture.completedFuture(true);
 
         } catch (Exception e) {
-            System.err.println("[BREVO HTTP ERROR] Failed to send result email to: " + toEmail);
+            System.err.println("[EMAIL ERROR] Failed to send result email to: " + toEmail);
+            System.err.println("[EMAIL ERROR] Cause: " + e.getMessage());
             e.printStackTrace();
             return CompletableFuture.completedFuture(false);
-        }
-    }
-
-    private boolean sendViaBrevo(String toEmail, String subject, String htmlContent) {
-        try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("api-key", brevoApiKey);
-            headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
-
-            Map<String, Object> sender = new HashMap<>();
-            sender.put("name", "Exam Center");
-            sender.put("email", fromEmail);
-
-            Map<String, String> recipient = new HashMap<>();
-            recipient.put("email", toEmail);
-
-            Map<String, Object> body = new HashMap<>();
-            body.put("sender", sender);
-            body.put("to", Collections.singletonList(recipient));
-            body.put("subject", subject);
-            body.put("htmlContent", htmlContent);
-
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
-            ResponseEntity<String> response = restTemplate.exchange(
-                    BREVO_API_URL,
-                    HttpMethod.POST,
-                    entity,
-                    String.class
-            );
-
-            if (response.getStatusCode().is2xxSuccessful()) {
-                System.out.println("[BREVO HTTP] Email sent successfully! Response: " + response.getBody());
-                return true;
-            } else {
-                System.err.println("[BREVO HTTP ERROR] Received non-2xx status: " + response.getStatusCode() + ", Body: " + response.getBody());
-                return false;
-            }
-        } catch (org.springframework.web.client.HttpStatusCodeException e) {
-            System.err.println("[BREVO HTTP ERROR] Status Code: " + e.getStatusCode());
-            System.err.println("[BREVO HTTP ERROR] Error Body: " + e.getResponseBodyAsString());
-            e.printStackTrace();
-            return false;
-        } catch (Exception e) {
-            System.err.println("[BREVO HTTP EXCEPTION] Error calling Brevo API: " + e.getMessage());
-            e.printStackTrace();
-            return false;
         }
     }
 }
