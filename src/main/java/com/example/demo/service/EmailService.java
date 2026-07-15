@@ -147,6 +147,11 @@ public class EmailService {
                 System.err.println("[BREVO HTTP ERROR] Received non-2xx status: " + response.getStatusCode() + ", Body: " + response.getBody());
                 return false;
             }
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            System.err.println("[BREVO HTTP ERROR] Status Code: " + e.getStatusCode());
+            System.err.println("[BREVO HTTP ERROR] Error Body: " + e.getResponseBodyAsString());
+            e.printStackTrace();
+            return false;
         } catch (Exception e) {
             System.err.println("[BREVO HTTP EXCEPTION] Error calling Brevo API: " + e.getMessage());
             e.printStackTrace();
