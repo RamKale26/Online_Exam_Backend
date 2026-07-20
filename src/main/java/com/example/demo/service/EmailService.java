@@ -70,10 +70,20 @@ public class EmailService {
 
     private boolean sendEmailViaResend(String to, String subject, String htmlContent) {
         try {
+            if (apiKey == null || apiKey.trim().isEmpty()) {
+                System.err.println("[EMAIL ERROR] Resend API Key is null or empty!");
+            } else {
+                String maskedKey = apiKey.length() > 8 
+                    ? apiKey.substring(0, 6) + "..." + apiKey.substring(apiKey.length() - 2)
+                    : "invalid key length";
+                System.out.println("[EMAIL] Using API Key: " + maskedKey + " (length: " + apiKey.length() + ")");
+            }
+
             String url = "https://api.resend.com/emails";
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("Authorization", "Bearer " + apiKey);
+            headers.set("Authorization", "Bearer " + apiKey.trim());
+            headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 
             ResendEmailRequest payload = new ResendEmailRequest(fromEmail, Collections.singletonList(to), subject, htmlContent);
             HttpEntity<ResendEmailRequest> requestEntity = new HttpEntity<>(payload, headers);
