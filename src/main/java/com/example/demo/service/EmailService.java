@@ -1,118 +1,38 @@
 package com.example.demo.service;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
-
-import java.util.Collections;
+import jakarta.mail.internet.MimeMessage;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 @Service
 public class EmailService {
 
-    @Value("${resend.api.key}")
-    private String apiKey;
+    @Autowired
+    private JavaMailSender mailSender;
 
-    @Value("${resend.from.email}")
-    private String fromEmail;
-
-    private static class ResendEmailRequest {
-        private String from;
-        private List<String> to;
-        private String subject;
-        private String html;
-
-        public ResendEmailRequest(String from, List<String> to, String subject, String html) {
-            this.from = from;
-            this.to = to;
-            this.subject = subject;
-            this.html = html;
-        }
-
-        public String getFrom() {
-            return from;
-        }
-
-        public void setFrom(String from) {
-            this.from = from;
-        }
-
-        public List<String> getTo() {
-            return to;
-        }
-
-        public void setTo(List<String> to) {
-            this.to = to;
-        }
-
-        public String getSubject() {
-            return subject;
-        }
-
-        public void setSubject(String subject) {
-            this.subject = subject;
-        }
-
-        public String getHtml() {
-            return html;
-        }
-
-        public void setHtml(String html) {
-            this.html = html;
-        }
-    }
-
-    private boolean sendEmailViaResend(String to, String subject, String htmlContent) {
-        try {
-            if (apiKey == null || apiKey.trim().isEmpty()) {
-                System.err.println("[EMAIL ERROR] Resend API Key is null or empty!");
-            } else {
-                String maskedKey = apiKey.length() > 8 
-                    ? apiKey.substring(0, 6) + "..." + apiKey.substring(apiKey.length() - 2)
-                    : "invalid key length";
-                System.out.println("[EMAIL] Using API Key: " + maskedKey + " (length: " + apiKey.length() + ")");
-            }
-
-            String url = "https://api.resend.com/emails";
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("Authorization", "Bearer " + apiKey.trim());
-            headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-
-            ResendEmailRequest payload = new ResendEmailRequest(fromEmail, Collections.singletonList(to), subject, htmlContent);
-            HttpEntity<ResendEmailRequest> requestEntity = new HttpEntity<>(payload, headers);
-
-            RestTemplate restTemplate = new RestTemplate();
-            ResponseEntity<String> response = restTemplate.postForEntity(url, requestEntity, String.class);
-
-            if (response.getStatusCode().is2xxSuccessful()) {
-                System.out.println("[EMAIL] Email sent successfully to: " + to + ". Response: " + response.getBody());
-                return true;
-            } else {
-                System.err.println("[EMAIL ERROR] Resend API returned status: " + response.getStatusCode() + ", Body: " + response.getBody());
-                return false;
-            }
-        } catch (Exception e) {
-            System.err.println("[EMAIL ERROR] Failed to send email via Resend to: " + to);
-            System.err.println("[EMAIL ERROR] Cause: " + e.getMessage());
-            e.printStackTrace();
-            return false;
-        }
-    }
+    @Value("${mail.from}")
+    private String from;
 
     @Async
     public CompletableFuture<Boolean> sendOtp(String to, String otp) {
         try {
             System.out.println("=================================");
             System.out.println("[EMAIL] Sending OTP to: " + to);
-            System.out.println("[EMAIL] From: " + fromEmail);
+            System.out.println("[EMAIL] From: " + from);
             System.out.println("=================================");
+
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+            helper.setFrom(from);
+            helper.setTo(to);
+            helper.setSubject("Your OTP - Online Exam System");
 
             String htmlContent = "<html><body style='font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 20px;'>"
                     + "<div style='max-width: 480px; margin: 0 auto; background: #ffffff; border-radius: 10px; padding: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);'>"
@@ -127,11 +47,20 @@ public class EmailService {
                     + "<p style='color: #aaa; font-size: 12px; margin-top: 30px; text-align: center;'>If you did not request this OTP, please ignore this email.</p>"
                     + "</div></body></html>";
 
-            boolean success = sendEmailViaResend(to, "Your OTP - Online Exam System", htmlContent);
-            return CompletableFuture.completedFuture(success);
+            helper.setText(htmlContent, true);
+            mailSender.send(message);
+
+            System.out.println("[EMAIL] OTP SENT SUCCESSFULLY to: " + to);
+            return CompletableFuture.completedFuture(true);
 
         } catch (Exception e) {
             System.err.println("[EMAIL ERROR] Failed to send OTP to: " + to);
+            System.err.println("[EMAIL ERROR] Type: " + e.getClass().getName());
+            System.err.println("[EMAIL ERROR] Cause: " + e.getMessage());
+            Throwable root = e;
+            while (root.getCause() != null)
+                root = root.getCause();
+            System.err.println("[EMAIL ERROR] Root cause: " + root.getMessage());
             e.printStackTrace();
             return CompletableFuture.completedFuture(false);
         }
@@ -144,6 +73,13 @@ public class EmailService {
             System.out.println("=================================");
             System.out.println("[EMAIL] Sending result to: " + toEmail);
             System.out.println("=================================");
+
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+            helper.setFrom(from);
+            helper.setTo(toEmail);
+            helper.setSubject("Your Exam Performance Report - " + categoryName);
 
             double percentage = totalQuestions > 0 ? ((double) score / totalQuestions) * 100 : 0;
             String status = percentage >= 50 ? "PASSED" : "FAILED";
@@ -203,11 +139,15 @@ public class EmailService {
             htmlContent.append("<p style='margin-top: 20px;'>Best regards,<br/>Online Exam System Team</p>");
             htmlContent.append("</div></body></html>");
 
-            boolean success = sendEmailViaResend(toEmail, "Your Exam Performance Report - " + categoryName, htmlContent.toString());
-            return CompletableFuture.completedFuture(success);
+            helper.setText(htmlContent.toString(), true);
+            mailSender.send(message);
+
+            System.out.println("[EMAIL] Result email SENT SUCCESSFULLY to: " + toEmail);
+            return CompletableFuture.completedFuture(true);
 
         } catch (Exception e) {
             System.err.println("[EMAIL ERROR] Failed to send result email to: " + toEmail);
+            System.err.println("[EMAIL ERROR] Cause: " + e.getMessage());
             e.printStackTrace();
             return CompletableFuture.completedFuture(false);
         }
